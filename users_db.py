@@ -108,6 +108,26 @@ def migrate_add_columns_and_role_and_settings():
         )
     except sqlite3.OperationalError:
         pass
+    try:
+        c.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS api_keys (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                key_prefix TEXT NOT NULL,
+                key_hash TEXT NOT NULL UNIQUE,
+                scopes TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_at REAL NOT NULL,
+                created_by TEXT,
+                expires_at REAL,
+                last_used_at REAL,
+                last_used_ip TEXT
+            )
+            '''
+        )
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
 
@@ -309,6 +329,149 @@ def get_notification_settings(default=None):
 
 def set_notification_settings(settings):
     set_global_setting('notification_settings', settings)
+
+
+# --- External API settings & API key storage ---
+EXTERNAL_API_SETTINGS_KEY = 'external_api_settings'
+DEFAULT_EXTERNAL_API_SETTINGS = {'enabled': False}
+
+
+def get_external_api_settings():
+    stored = get_global_setting(EXTERNAL_API_SETTINGS_KEY, {})
+    settings = dict(DEFAULT_EXTERNAL_API_SETTINGS)
+    if isinstance(stored, dict):
+        settings['enabled'] = bool(stored.get('enabled', False))
+    return settings
+
+
+def set_external_api_settings(settings):
+    normalized = {'enabled': bool((settings or {}).get('enabled', False))}
+    set_global_setting(EXTERNAL_API_SETTINGS_KEY, normalized)
+    return normalized
+
+
+def is_external_api_enabled():
+    return bool(get_external_api_settings().get('enabled'))
+
+
+def _row_to_api_key(row, include_sensitive=False):
+    try:
+        scopes = json.loads(row['scopes']) if row['scopes'] else []
+    except Exception:
+        scopes = []
+    record = {
+        'id': row['id'],
+        'name': row['name'],
+        'key_prefix': row['key_prefix'],
+        'scopes': scopes,
+        'enabled': bool(row['enabled']),
+        'created_at': row['created_at'],
+        'created_by': row['created_by'],
+        'expires_at': row['expires_at'],
+        'last_used_at': row['last_used_at'],
+        'last_used_ip': row['last_used_ip'],
+    }
+    if include_sensitive:
+        record['key_hash'] = row['key_hash']
+    return record
+
+
+def create_api_key(name, key_prefix, key_hash, scopes, created_by=None, expires_at=None):
+    conn = get_db()
+    c = conn.cursor()
+    scopes_json = json.dumps(list(scopes))
+    try:
+        c.execute(
+            '''
+            INSERT INTO api_keys (
+                name, key_prefix, key_hash, scopes, enabled, created_at, created_by, expires_at
+            ) VALUES (?, ?, ?, ?, 1, ?, ?, ?)
+            ''',
+            (name, key_prefix, key_hash, scopes_json, time.time(), created_by, expires_at),
+        )
+        conn.commit()
+        return c.lastrowid
+    finally:
+        conn.close()
+
+
+def list_api_keys():
+    conn = get_db()
+    c = conn.cursor()
+    c.execute(
+        '''
+        SELECT id, name, key_prefix, key_hash, scopes, enabled, created_at, created_by,
+               expires_at, last_used_at, last_used_ip
+        FROM api_keys
+        ORDER BY created_at DESC, id DESC
+        '''
+    )
+    keys = [_row_to_api_key(row) for row in c.fetchall()]
+    conn.close()
+    return keys
+
+
+def get_api_key_by_id(key_id):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute(
+        '''
+        SELECT id, name, key_prefix, key_hash, scopes, enabled, created_at, created_by,
+               expires_at, last_used_at, last_used_ip
+        FROM api_keys WHERE id=?
+        ''',
+        (int(key_id),),
+    )
+    row = c.fetchone()
+    conn.close()
+    return _row_to_api_key(row) if row else None
+
+
+def get_api_key_by_hash(key_hash):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute(
+        '''
+        SELECT id, name, key_prefix, key_hash, scopes, enabled, created_at, created_by,
+               expires_at, last_used_at, last_used_ip
+        FROM api_keys WHERE key_hash=?
+        ''',
+        (key_hash,),
+    )
+    row = c.fetchone()
+    conn.close()
+    return _row_to_api_key(row, include_sensitive=True) if row else None
+
+
+def set_api_key_enabled(key_id, enabled):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('UPDATE api_keys SET enabled=? WHERE id=?', (1 if enabled else 0, int(key_id)))
+    conn.commit()
+    changed = c.rowcount > 0
+    conn.close()
+    return changed
+
+
+def delete_api_key(key_id):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('DELETE FROM api_keys WHERE id=?', (int(key_id),))
+    conn.commit()
+    deleted = c.rowcount > 0
+    conn.close()
+    return deleted
+
+
+def touch_api_key_usage(key_id, remote_addr=None, now_ts=None):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute(
+        'UPDATE api_keys SET last_used_at=?, last_used_ip=? WHERE id=?',
+        (float(now_ts if now_ts is not None else time.time()), remote_addr, int(key_id)),
+    )
+    conn.commit()
+    conn.close()
 
 
 def normalize_auto_update_settings(settings=None):

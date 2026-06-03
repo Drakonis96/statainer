@@ -36,6 +36,11 @@ It is designed for self-hosted environments where you want fast operational visi
 - Browser-side notification center with pending event history.
 - External delivery through Pushover, Slack, Telegram, Discord, ntfy, and generic webhooks.
 
+### Programmatic API
+- Optional, admin-enabled REST API protected by scoped, per-key bearer tokens.
+- Expose container counts, per-container metrics, host CPU cores and max RAM, and run/stop/restart/update controls — all gated by the scopes you grant each key.
+- Tokens are hashed at rest and shown once; keys support optional expiration and reversible pause/delete. See **[API.md](API.md)** for the full reference.
+
 ## Screenshots
 
 <table align="center">
@@ -403,6 +408,30 @@ Available placeholders:
 - `{event_json}`
 
 </details>
+
+## External API
+
+statainer exposes an optional, token-authenticated REST API for external tools
+(dashboards, automation, monitoring). It is **disabled by default**.
+
+- Enable it and manage keys under **Settings → API access** (admin only).
+- Each key is created with a name, a set of **scopes**, and an optional
+  expiration. Keys can be **paused** (reversible) or **deleted** to revoke
+  access instantly.
+- Tokens are shown once and stored only as a SHA-256 hash.
+- Reach it at `<your dashboard URL>/api/v1`, authenticating with
+  `Authorization: Bearer <token>`. This works the same whether you hit the
+  server directly (`IP:port`) or through a reverse proxy.
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" https://your-host/api/v1/system
+```
+
+Hardening is configurable via `EXTERNAL_API_RATE_LIMIT_MAX`,
+`EXTERNAL_API_AUTH_FAIL_MAX`, and `EXTERNAL_API_REQUIRE_HTTPS_FOR_WRITE`
+(see the table in [API.md](API.md)).
+
+**Full reference, scope list, and per-endpoint examples: [API.md](API.md).**
 
 ## Metrics Backends
 

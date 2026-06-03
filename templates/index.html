@@ -826,6 +826,9 @@
                 <li class="nav-item" role="presentation">
                   <button class="nav-link" id="tab-manageuser" data-bs-toggle="tab" data-bs-target="#manageUserTabPane" type="button" role="tab" aria-controls="manageUserTabPane" aria-selected="false">Users</button>
                 </li>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link" id="tab-apikeys" data-bs-toggle="tab" data-bs-target="#apiKeysTabPane" type="button" role="tab" aria-controls="apiKeysTabPane" aria-selected="false">API access</button>
+                </li>
               </ul>
               <div class="tab-content mt-3">
                 <!-- Ajustes Tab -->
@@ -881,6 +884,49 @@
                   <h6>Existing users</h6>
                   <div id="usersList">
                     <!-- User list will be rendered here by JS -->
+                  </div>
+                </div>
+                <!-- API Access Tab -->
+                <div class="tab-pane fade settings-pane" id="apiKeysTabPane" role="tabpanel" aria-labelledby="tab-apikeys">
+                  <div class="form-check form-switch mb-2">
+                    <input class="form-check-input" type="checkbox" role="switch" id="apiEnabledToggle">
+                    <label class="form-check-label" for="apiEnabledToggle"><strong>Enable external API</strong></label>
+                  </div>
+                  <p class="text-muted small">Expose a read/control API protected by per-key tokens. While disabled, every key is rejected (keys keep their configuration). Tokens are stored only as a hash and shown once.</p>
+                  <div id="apiBaseUrlHint" class="settings-pane mb-3 small"></div>
+                  <hr>
+                  <h6>Create API key</h6>
+                  <form id="createApiKeyForm">
+                    <div class="mb-3">
+                      <label for="apiKeyName" class="form-label">Name</label>
+                      <input type="text" class="form-control" id="apiKeyName" placeholder="e.g. monitoring-bot" required>
+                    </div>
+                    <div class="mb-2">
+                      <strong>Permissions (scopes):</strong>
+                      <div id="apiKeyScopes" class="column-toggles">
+                        <!-- Scope checkboxes inserted by JS -->
+                      </div>
+                    </div>
+                    <div class="mb-3">
+                      <label for="apiKeyExpiryDays" class="form-label">Expiration in days <span class="text-muted">(optional, blank = never)</span></label>
+                      <input type="number" min="1" step="1" class="form-control" id="apiKeyExpiryDays" placeholder="Never expires">
+                    </div>
+                    <div id="apiKeyFormError" class="text-danger mb-2" style="display:none;"></div>
+                    <div class="settings-pane-actions">
+                      <button type="submit" class="btn btn-primary">Create key</button>
+                    </div>
+                  </form>
+                  <div id="apiKeyReveal" class="alert alert-success mt-3" style="display:none;">
+                    <div><strong>Copy this key now.</strong> For security it will not be shown again.</div>
+                    <div class="input-group mt-2">
+                      <input type="text" class="form-control font-monospace" id="apiKeyRevealValue" readonly>
+                      <button class="btn btn-outline-secondary" type="button" id="apiKeyCopyBtn">Copy</button>
+                    </div>
+                  </div>
+                  <hr>
+                  <h6>Existing API keys</h6>
+                  <div id="apiKeysList">
+                    <!-- API key list rendered by JS -->
                   </div>
                 </div>
               </div>

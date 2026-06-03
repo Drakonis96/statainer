@@ -331,6 +331,7 @@ export function createUserController(ctx, deps) {
     blockInteraction(document.getElementById('updateManagerToggle'), 'Only admin has access to this feature');
     blockInteraction(document.getElementById('sidebarUpdateManagerToggle'), 'Only admin has access to this feature');
     blockInteraction(ctx.elements.tabManageUser, 'Only admin has access to this feature');
+    blockInteraction(ctx.elements.tabApiKeys, 'Only admin has access to this feature');
     if (ctx.elements.testNotifBtn) {
       ctx.elements.testNotifBtn.disabled = true;
       ctx.elements.testNotifBtn.title = 'Only admin can send notifications';

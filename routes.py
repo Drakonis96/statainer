@@ -16,8 +16,11 @@ from update_notifications import build_update_result_event
 from users_db import (
     validate_user, change_password, create_user_with_columns, list_users_with_columns,
     update_user_columns, delete_user, get_user_columns, get_user_role, user_exists,
-    list_audit_events, record_audit_event
+    list_audit_events, record_audit_event,
+    list_api_keys, get_api_key_by_id, set_api_key_enabled, delete_api_key,
+    get_external_api_settings, set_external_api_settings
 )
+import api_keys as api_keys_service
 import update_manager
 errors = docker.errors
 
@@ -1720,6 +1723,100 @@ def api_delete_user(username):
     delete_user(username)
     audit_event('user.delete', 'user', 'success', target_id=username)
     return jsonify({'ok': True})
+
+# --- External API key management (admin only) ---
+@main_routes.route('/api/api-keys', methods=['GET'])
+@admin_required
+def api_list_api_keys():
+    """Return the master toggle, scope catalog and existing keys (no secrets)."""
+    return jsonify({
+        'enabled': bool(get_external_api_settings().get('enabled')),
+        'scopes': api_keys_service.scopes_catalog(),
+        'keys': list_api_keys(),
+    })
+
+
+@main_routes.route('/api/api-keys/settings', methods=['POST'])
+@admin_required
+@csrf_protect
+def api_set_api_settings():
+    data = request.get_json(force=True) or {}
+    enabled = bool(data.get('enabled'))
+    settings = set_external_api_settings({'enabled': enabled})
+    audit_event('api.settings_update', 'api', 'success', details={'enabled': enabled})
+    return jsonify({'ok': True, 'settings': settings})
+
+
+@main_routes.route('/api/api-keys', methods=['POST'])
+@admin_required
+@csrf_protect
+def api_create_api_key():
+    data = request.get_json(force=True) or {}
+    name = (data.get('name') or '').strip()
+    scopes = data.get('scopes', [])
+    if not isinstance(scopes, list):
+        scopes = []
+
+    expires_at = data.get('expires_at')
+    expires_in_days = data.get('expires_in_days')
+    if not expires_at and expires_in_days:
+        try:
+            days = float(expires_in_days)
+            if days > 0:
+                expires_at = time.time() + days * 86400
+        except (TypeError, ValueError):
+            audit_event('api.key_create', 'api', 'failure', details={'reason': 'invalid_expiry'})
+            return jsonify({'error': 'Invalid expiration.'}), 400
+
+    try:
+        token, record = api_keys_service.create_key(
+            name=name,
+            scopes=scopes,
+            created_by=get_request_username(),
+            expires_at=expires_at,
+        )
+    except ValueError as exc:
+        audit_event('api.key_create', 'api', 'failure', details={'reason': str(exc)})
+        return jsonify({'error': str(exc)}), 400
+
+    audit_event(
+        'api.key_create', 'api', 'success',
+        target_id=str(record['id']),
+        details={'name': record['name'], 'scopes': record['scopes'], 'expires_at': record['expires_at']},
+    )
+    # The plaintext token is returned exactly once and never stored.
+    return jsonify({'ok': True, 'token': token, 'key': record}), 201
+
+
+@main_routes.route('/api/api-keys/<int:key_id>', methods=['PUT'])
+@admin_required
+@csrf_protect
+def api_update_api_key(key_id):
+    data = request.get_json(force=True) or {}
+    if 'enabled' not in data:
+        return jsonify({'error': 'Nothing to update.'}), 400
+    record = get_api_key_by_id(key_id)
+    if not record:
+        audit_event('api.key_update', 'api', 'failure', target_id=str(key_id), details={'reason': 'not_found'})
+        return jsonify({'error': 'API key not found.'}), 404
+    enabled = bool(data.get('enabled'))
+    set_api_key_enabled(key_id, enabled)
+    audit_event('api.key_update', 'api', 'success', target_id=str(key_id), details={'enabled': enabled, 'name': record['name']})
+    return jsonify({'ok': True, 'key': get_api_key_by_id(key_id)})
+
+
+@main_routes.route('/api/api-keys/<int:key_id>', methods=['DELETE'])
+@admin_required
+@csrf_protect
+def api_delete_api_key(key_id):
+    record = get_api_key_by_id(key_id)
+    if not record:
+        audit_event('api.key_delete', 'api', 'failure', target_id=str(key_id), details={'reason': 'not_found'})
+        return jsonify({'error': 'API key not found.'}), 404
+    delete_api_key(key_id)
+    audit_event('api.key_delete', 'api', 'success', target_id=str(key_id), details={'name': record['name']})
+    return jsonify({'ok': True})
+
 
 @main_routes.route('/whoami')
 def whoami():

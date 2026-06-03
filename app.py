@@ -58,6 +58,7 @@ from config import (
     LOGIN_RATE_LIMIT_MAX_ATTEMPTS,
     LOGIN_RATE_LIMIT_WINDOW_SECONDS,
 )
+from api_routes import api_v1
 from docker_client import get_docker_status, initialize_docker_clients
 from routes import main_routes
 from sampler import sample_metrics
@@ -171,6 +172,7 @@ def create_app(test_config=None):
 
     flask_app.secret_key = flask_app.config["SECRET_KEY"]
     flask_app.register_blueprint(main_routes)
+    flask_app.register_blueprint(api_v1)
 
     @flask_app.after_request
     def add_security_headers(response):

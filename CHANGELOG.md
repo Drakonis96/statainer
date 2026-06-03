@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.9.17
+
+### Added
+- **External programmatic API with API keys.** A new **Settings → API access** tab (admin only) lets you expose a secure, scoped REST API:
+  - **Master toggle** to enable/disable the whole API at runtime. While disabled every key is rejected; keys keep their configuration.
+  - **Create named keys** with **granular scopes** (`system:read`, `containers:read`, `stats:read`, `containers:start`, `containers:stop`, `containers:restart`, `containers:update`) and an **optional expiration** (in days).
+  - **Reversible revocation:** pause/resume a key without deleting it, or delete it to immediately cut off access.
+  - Tokens are shown **once** on creation and stored only as a **SHA-256 hash** — the plaintext is never persisted.
+  - Endpoints under `/api/v1`: `GET /ping`, `GET /me`, `GET /system` (CPU cores, max RAM, Docker info, counts), `GET /containers`, `GET /containers/<id>`, `GET /stats`, `GET /containers/<id>/stats`, and `POST /containers/<id>/{start,stop,restart,update}`.
+  - Authenticate with `Authorization: Bearer <token>` (or `X-API-Key`). The base URL follows however you reach the dashboard — direct `IP:port` or a reverse-proxy domain.
+  - Hardening: per-key **rate limiting**, per-IP **auth-failure throttling**, **audit logging** of key management and write actions, optional **HTTPS-only writes**, and isolation from the session-auth UI routes.
+- New environment variables to tune the API: `EXTERNAL_API_RATE_LIMIT_MAX` (default `120`), `EXTERNAL_API_RATE_LIMIT_WINDOW_SECONDS` (default `60`), `EXTERNAL_API_AUTH_FAIL_MAX` (default `10`), `EXTERNAL_API_AUTH_FAIL_WINDOW_SECONDS` (default `60`), and `EXTERNAL_API_REQUIRE_HTTPS_FOR_WRITE` (default `false`).
+- New [API.md](API.md) documenting authentication, scopes, every endpoint, curl examples and security notes (linked from the README).
+
 ## v0.9.16
 
 ### Fixed

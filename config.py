@@ -68,6 +68,17 @@ SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "Lax").strip
 LOGIN_RATE_LIMIT_MAX_ATTEMPTS = _get_int("LOGIN_RATE_LIMIT_MAX_ATTEMPTS", 5)
 LOGIN_RATE_LIMIT_WINDOW_SECONDS = _get_int("LOGIN_RATE_LIMIT_WINDOW_SECONDS", 300)
 
+# External programmatic API (API keys). Per-key rate limiting protects the
+# endpoints from brute force and abuse even when exposed behind a reverse proxy.
+EXTERNAL_API_RATE_LIMIT_MAX = _get_int("EXTERNAL_API_RATE_LIMIT_MAX", 120)
+EXTERNAL_API_RATE_LIMIT_WINDOW_SECONDS = _get_int("EXTERNAL_API_RATE_LIMIT_WINDOW_SECONDS", 60)
+# Reject unauthenticated bearer tokens this many times per IP within the window
+# before temporarily blocking the IP (mitigates token guessing).
+EXTERNAL_API_AUTH_FAIL_MAX = _get_int("EXTERNAL_API_AUTH_FAIL_MAX", 10)
+EXTERNAL_API_AUTH_FAIL_WINDOW_SECONDS = _get_int("EXTERNAL_API_AUTH_FAIL_WINDOW_SECONDS", 60)
+# When true, container-mutating endpoints require an HTTPS request.
+EXTERNAL_API_REQUIRE_HTTPS_FOR_WRITE = _get_bool("EXTERNAL_API_REQUIRE_HTTPS_FOR_WRITE", False)
+
 TRUSTED_PROXY_HOPS = _get_int("TRUSTED_PROXY_HOPS", 0)
 ENABLE_PROXY_FIX = _get_bool("ENABLE_PROXY_FIX", TRUSTED_PROXY_HOPS > 0)
 PROXY_FIX_X_FOR = _get_int("PROXY_FIX_X_FOR", TRUSTED_PROXY_HOPS)

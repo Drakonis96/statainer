@@ -20,6 +20,7 @@ import { createNotificationController } from './notifications.js';
 import { createTableController } from './table.js';
 import { createUpdateManagerController } from './updates.js';
 import { createUserController } from './users.js';
+import { createApiKeyController } from './apikeys.js';
 
 const ctx = createDashboardContext(window.STATAINER_CONFIG || {});
 const dialogs = createDialogController(ctx);
@@ -54,6 +55,9 @@ const users = createUserController(ctx, {
   getAllTableColumns: () => table.getAllTableColumns(),
   confirmAction: (options) => dialogs.confirm(options),
   showNotice: (options) => dialogs.alert(options),
+});
+const apiKeys = createApiKeyController(ctx, {
+  confirmAction: (options) => dialogs.confirm(options),
 });
 let mobile = null;
 const updates = createUpdateManagerController(ctx, {
@@ -619,6 +623,7 @@ async function init() {
   logs.init();
   table.init();
   users.init();
+  apiKeys.init();
   mobile.init();
   notifications.init();
   updates.init();
