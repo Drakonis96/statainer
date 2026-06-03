@@ -648,7 +648,7 @@
 }
 
   </style>
-  <link rel="stylesheet" href="{{ url_for('static', filename='dashboard-modern.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='dashboard-modern.css') }}?v={{ app_version }}">
 </head>
 <body data-bs-theme="light">
   <script>
@@ -893,7 +893,7 @@
                     <label class="form-check-label" for="apiEnabledToggle"><strong>Enable external API</strong></label>
                   </div>
                   <p class="text-muted small">Expose a read/control API protected by per-key tokens. While disabled, every key is rejected (keys keep their configuration). Tokens are stored only as a hash and shown once.</p>
-                  <div id="apiBaseUrlHint" class="settings-pane mb-3 small"></div>
+                  <div id="apiBaseUrlHint" class="api-base-hint mb-3 small"></div>
                   <hr>
                   <h6>Create API key</h6>
                   <form id="createApiKeyForm">
@@ -912,7 +912,7 @@
                       <input type="number" min="1" step="1" class="form-control" id="apiKeyExpiryDays" placeholder="Never expires">
                     </div>
                     <div id="apiKeyFormError" class="text-danger mb-2" style="display:none;"></div>
-                    <div class="settings-pane-actions">
+                    <div class="api-form-actions">
                       <button type="submit" class="btn btn-primary">Create key</button>
                     </div>
                   </form>
@@ -1808,6 +1808,6 @@
       appVersion: {{ app_version|tojson }}
     };
   </script>
-  <script type="module" src="{{ url_for('static', filename='js/dashboard/app.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/dashboard/app.js') }}?v={{ app_version }}"></script>
 </body>
 </html>

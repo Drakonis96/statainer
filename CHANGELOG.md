@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.9.18
+
+### Fixed
+- **API access tab layout.** The "Create key" button used the sticky action style and overlapped the scopes/keys list below it, making the panel look broken. It is now inline so the form, the one-time key reveal, and the existing-keys list flow cleanly.
+- Restyled the Base URL hint into a subtle, self-contained box (with light/dark variants) instead of reusing the tab-pane card style.
+
+### Changed
+- Added `?v=<app_version>` cache-busting to the dashboard stylesheet and the dashboard JS entry point so browsers and reverse proxies pick up new assets immediately after an update. This prevents a stale cached `context.js` from leaving the API access tab non-functional (form not wired, keys not listed) after upgrading.
+
 ## v0.9.17
 
 ### Added

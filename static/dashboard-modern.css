@@ -535,6 +535,39 @@ nav.navbar {
   border-color: rgba(22, 51, 41, 0.08);
 }
 
+/* API access tab: keep the create button inline (NOT sticky) so it never
+   overlaps the scope list or the existing-keys list that follow it. */
+.api-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 0.9rem;
+}
+
+.api-base-hint {
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(22, 51, 41, 0.1);
+  border-radius: 12px;
+  background: rgba(22, 51, 41, 0.04);
+  word-break: break-word;
+}
+
+.api-base-hint code {
+  word-break: break-all;
+}
+
+/* Each API scope on its own full-width line (the global .form-check override
+   is inline-block, which would otherwise pair short scopes together). */
+#apiKeyScopes .form-check {
+  display: block;
+  width: 100%;
+  margin-bottom: 0.3rem;
+}
+
+#apiKeyScopes .form-check:last-child {
+  margin-bottom: 0;
+}
+
 .app-dialog-wrap {
   max-width: 480px;
 }
@@ -2499,6 +2532,11 @@ nav.navbar {
 
 [data-bs-theme="dark"] .settings-modal .nav-tabs .nav-link.active {
   background: var(--ds-accent);
+}
+
+[data-bs-theme="dark"] .api-base-hint {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 [data-bs-theme="dark"] .workspace-advanced {

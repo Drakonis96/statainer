@@ -18,3 +18,5 @@ package-lock.json
 package-lock.json.bak
 users.db
 reload.txt
+.local_test/
+.claude/launch.json
