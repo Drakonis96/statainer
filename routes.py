@@ -2,6 +2,7 @@
 
 import collections
 import datetime
+import hmac
 import threading
 import time  # Add time import
 import requests  # Añadido para peticiones HTTP a cAdvisor
@@ -40,6 +41,13 @@ main_routes = Blueprint('main_routes', __name__, template_folder='templates', st
 _login_attempts_lock = threading.Lock()
 _login_attempts: dict[str, collections.deque] = {}
 
+# Upper bound on the number of distinct client IPs tracked simultaneously. The
+# tracking dict is purged of stale buckets first; if a flood of spoofed/rotating
+# source IPs still keeps it at capacity, the oldest buckets are evicted. This
+# bounds memory so the limiter itself cannot be turned into a memory-exhaustion
+# DoS vector (e.g. via attacker-controlled X-Forwarded-For behind a proxy).
+_MAX_TRACKED_IPS = 10000
+
 
 def _get_rate_limit_config():
     max_attempts = current_app.config.get('LOGIN_RATE_LIMIT_MAX_ATTEMPTS', 5)
@@ -50,6 +58,16 @@ def _get_rate_limit_config():
 def _prune_attempts(timestamps, cutoff):
     while timestamps and timestamps[0] <= cutoff:
         timestamps.popleft()
+
+
+def _purge_stale_buckets_locked(now, window):
+    """Drop empty/expired per-IP buckets. Caller must hold _login_attempts_lock."""
+    cutoff = now - window
+    for ip in list(_login_attempts.keys()):
+        timestamps = _login_attempts[ip]
+        _prune_attempts(timestamps, cutoff)
+        if not timestamps:
+            del _login_attempts[ip]
 
 
 def is_login_rate_limited(ip_addr):
@@ -70,11 +88,17 @@ def is_login_rate_limited(ip_addr):
 
 
 def record_failed_login(ip_addr):
-    max_attempts, _ = _get_rate_limit_config()
+    max_attempts, window = _get_rate_limit_config()
     if max_attempts <= 0:
         return
     now = time.monotonic()
     with _login_attempts_lock:
+        if ip_addr not in _login_attempts and len(_login_attempts) >= _MAX_TRACKED_IPS:
+            # At capacity with a new IP: reclaim space from expired buckets, then
+            # evict oldest buckets if a genuine flood is still keeping us full.
+            _purge_stale_buckets_locked(now, window)
+            while len(_login_attempts) >= _MAX_TRACKED_IPS:
+                _login_attempts.pop(next(iter(_login_attempts)), None)
         if ip_addr not in _login_attempts:
             _login_attempts[ip_addr] = collections.deque()
         _login_attempts[ip_addr].append(now)
@@ -180,7 +204,11 @@ def generate_csrf_token():
 
 def has_valid_csrf_token():
     token = request.headers.get('X-CSRFToken') or request.form.get('csrf_token')
-    return bool(token) and token == session.get('csrf_token')
+    expected = session.get('csrf_token')
+    if not token or not expected:
+        return False
+    # Constant-time comparison so the token cannot be guessed via timing.
+    return hmac.compare_digest(str(token), str(expected))
 
 
 def validate_csrf():
@@ -210,6 +238,14 @@ def admin_required(f):
     return decorated_function
 
 # --- Login Route for Page-Based Authentication ---
+def _no_store_headers(extra=None):
+    """Headers preventing the login page (and its CSRF token) from being cached."""
+    headers = {'Cache-Control': 'no-store, max-age=0', 'Pragma': 'no-cache'}
+    if extra:
+        headers.update(extra)
+    return headers
+
+
 @main_routes.route('/login', methods=['GET', 'POST'])
 def login():
     """Handle login for page-based authentication"""
@@ -229,7 +265,7 @@ def login():
     if request.method == 'POST':
         if not has_valid_csrf_token():
             error = "Invalid or expired session. Reload the page and try again."
-            return render_template('login.html', csrf_token=generate_csrf_token(), error=error), 403
+            return render_template('login.html', csrf_token=generate_csrf_token(), error=error), 403, _no_store_headers()
 
         client_ip = get_request_remote_addr()
         limited, retry_after = is_login_rate_limited(client_ip)
@@ -246,7 +282,7 @@ def login():
                 details={'mode': 'page', 'reason': 'rate_limited'},
             )
             response = render_template('login.html', csrf_token=generate_csrf_token(), error=error)
-            return response, 429
+            return response, 429, _no_store_headers({'Retry-After': str(retry_after)})
 
         username = request.form.get('username')
         password = request.form.get('password')
@@ -271,8 +307,8 @@ def login():
                 details={'mode': 'page', 'reason': 'invalid_credentials'},
             )
             error = "Invalid username or password"
-    
-    return render_template('login.html', csrf_token=csrf_token, error=error)
+
+    return render_template('login.html', csrf_token=csrf_token, error=error), 200, _no_store_headers()
 
 # --- Logout Route ---
 @main_routes.route('/logout')
@@ -342,8 +378,9 @@ def require_auth():
         limited, retry_after = is_login_rate_limited(client_ip)
         if limited:
             if request.path.startswith('/api/'):
-                return jsonify({"error": "rate_limited", "message": f"Too many failed login attempts. Try again in {retry_after} seconds."}), 429
-            return Response(f'Too many failed login attempts. Try again in {retry_after} seconds.', 429)
+                payload = jsonify({"error": "rate_limited", "message": f"Too many failed login attempts. Try again in {retry_after} seconds."})
+                return payload, 429, {'Retry-After': str(retry_after)}
+            return Response(f'Too many failed login attempts. Try again in {retry_after} seconds.', 429, {'Retry-After': str(retry_after)})
         auth = request.authorization
         if not auth or not validate_user(auth.username, auth.password):
             if auth and auth.username:

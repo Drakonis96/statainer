@@ -12,6 +12,12 @@ UPDATE_HISTORY_RETENTION_DAYS = 15
 UPDATE_HISTORY_RETENTION_SECONDS = UPDATE_HISTORY_RETENTION_DAYS * 24 * 60 * 60
 AUTO_UPDATE_SETTINGS_KEY = 'auto_update_settings'
 
+# Pre-computed decoy hash used to keep validate_user() timing constant whether or
+# not the supplied username exists. Without it, a missing user short-circuits and
+# returns much faster than an existing user with a wrong password, leaking which
+# usernames are valid (user enumeration). We always run check_password_hash().
+_DECOY_PASSWORD_HASH = generate_password_hash('statainer-decoy-password-do-not-use')
+
 
 def _normalize_db_path(path):
     if os.path.isdir(path):
@@ -158,9 +164,12 @@ def validate_user(username, password):
     c.execute('SELECT password_hash FROM users WHERE username=?', (username,))
     row = c.fetchone()
     conn.close()
-    if row and check_password_hash(row['password_hash'], password):
-        return True
-    return False
+    # Always perform a password hash comparison — even when the user does not
+    # exist we check against a decoy hash — so the response time does not reveal
+    # whether the username is valid (mitigates user-enumeration timing attacks).
+    stored_hash = row['password_hash'] if row else _DECOY_PASSWORD_HASH
+    password_matches = check_password_hash(stored_hash, password or '')
+    return bool(row) and password_matches
 
 def change_password(username, new_password):
     conn = get_db()

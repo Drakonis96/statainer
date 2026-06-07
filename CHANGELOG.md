@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.9.19
+
+### Security
+- **Hardened login against user enumeration.** `validate_user` now always performs a password-hash comparison — against a constant decoy hash when the username does not exist — so the response time no longer reveals which usernames are valid (timing-based account enumeration).
+- **Constant-time CSRF token validation.** The submitted CSRF token is now compared with `hmac.compare_digest` instead of `==`, removing a timing side-channel on the token.
+- **Login rate limiter can no longer be turned into a memory-exhaustion DoS.** The in-memory per-IP attempt tracker now purges expired buckets and caps the number of tracked IPs (10,000), bounding memory even under a flood of spoofed/rotating source IPs (e.g. attacker-controlled `X-Forwarded-For` behind a proxy).
+- **`Retry-After` header on rate-limited (429) responses** for both page-based and Basic Auth (popup) login, so clients and reverse proxies can back off correctly.
+- **Login page is now marked non-cacheable** (`Cache-Control: no-store`), preventing intermediaries from caching the login form or its CSRF token.
+
+### Notes
+- No configuration or API changes. All existing environment variables, endpoints and the external `/api/v1` programmatic API behave exactly as before; these are defensive hardening changes only.
+
 ## v0.9.18
 
 ### Fixed

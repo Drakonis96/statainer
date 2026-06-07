@@ -176,7 +176,7 @@ It also mounts:
 | `APP_ENV` | Runtime mode. Use `production` behind a reverse proxy | `development` |
 | `REQUIRE_EXPLICIT_SECRET_KEY` | Refuses startup with an ephemeral secret | `true` in production |
 | `LOGIN_MODE` | Login flow: `popup` or `page` | `popup` |
-| `APP_VERSION` | Version shown in the UI footer | repository `VERSION` file (`v0.9.15`) |
+| `APP_VERSION` | Version shown in the UI footer | repository `VERSION` file (`v0.9.19`) |
 | `DOCKER_SOCKET_URL` | Docker socket URL | `unix:///var/run/docker.sock` |
 | `CADVISOR_URL` | cAdvisor endpoint | `http://cadvisor:8080` |
 | `GPU_METRICS_ENABLED` | Enables GPU collection | `true` in bundled compose |

@@ -1,4 +1,6 @@
 import base64
+import collections
+import time
 
 import app as app_module
 import pytest
@@ -931,4 +933,105 @@ def test_rate_limit_disabled_when_max_attempts_zero(tmp_path, monkeypatch):
     for _ in range(20):
         resp = client.get("/api/system-status", headers=basic_auth_header("admin", "wrong"))
         assert resp.status_code == 401
+    _clear_rate_limiter()
+
+
+def test_page_login_rate_limit_sets_retry_after_header(tmp_path, monkeypatch):
+    _clear_rate_limiter()
+    client = _make_rate_limit_client(tmp_path, monkeypatch, max_attempts=2)
+
+    with client.session_transaction() as sess:
+        sess["csrf_token"] = "rate-csrf"
+
+    for _ in range(2):
+        client.post("/login", data={"username": "admin", "password": "wrong", "csrf_token": "rate-csrf"})
+
+    resp = client.post("/login", data={"username": "admin", "password": "wrong", "csrf_token": "rate-csrf"})
+    assert resp.status_code == 429
+    assert int(resp.headers["Retry-After"]) >= 1
+    assert "no-store" in resp.headers.get("Cache-Control", "")
+    _clear_rate_limiter()
+
+
+def test_popup_rate_limit_sets_retry_after_header(tmp_path, monkeypatch):
+    _clear_rate_limiter()
+    client = _make_rate_limit_client(tmp_path, monkeypatch, max_attempts=2, login_mode="popup")
+
+    for _ in range(2):
+        client.get("/api/system-status", headers=basic_auth_header("admin", "wrong"))
+
+    resp = client.get("/api/system-status", headers=basic_auth_header("admin", "wrong"))
+    assert resp.status_code == 429
+    assert int(resp.headers["Retry-After"]) >= 1
+    _clear_rate_limiter()
+
+
+def test_login_page_is_not_cacheable(client, monkeypatch):
+    set_auth_mode(client, "page")
+    resp = client.get("/login")
+    assert resp.status_code == 200
+    assert "no-store" in resp.headers.get("Cache-Control", "")
+
+
+def test_login_rejects_mismatched_csrf_token(tmp_path, monkeypatch):
+    _clear_rate_limiter()
+    client = _make_rate_limit_client(tmp_path, monkeypatch, max_attempts=5)
+
+    with client.session_transaction() as sess:
+        sess["csrf_token"] = "the-real-token"
+
+    # A wrong CSRF token must be rejected (403) regardless of valid credentials.
+    resp = client.post("/login", data={
+        "username": "admin",
+        "password": "adminpass",
+        "csrf_token": "an-attacker-guess",
+    })
+    assert resp.status_code == 403
+    with client.session_transaction() as sess:
+        assert sess.get("authenticated") is not True
+    _clear_rate_limiter()
+
+
+def test_csrf_helper_uses_constant_time_comparison(client):
+    with client.application.test_request_context(
+        "/api/x", method="POST", headers={"X-CSRFToken": "abc123"}
+    ):
+        from flask import session as flask_session
+        flask_session["csrf_token"] = "abc123"
+        assert routes.has_valid_csrf_token() is True
+        flask_session["csrf_token"] = "different"
+        assert routes.has_valid_csrf_token() is False
+        flask_session.pop("csrf_token", None)
+        assert routes.has_valid_csrf_token() is False
+
+
+def test_rate_limiter_purges_stale_buckets(tmp_path, monkeypatch):
+    _clear_rate_limiter()
+    client = _make_rate_limit_client(tmp_path, monkeypatch, max_attempts=3, window=1)
+
+    with client.application.app_context():
+        # Insert an expired bucket and a fresh one, then trigger a purge.
+        now = time.monotonic()
+        with routes._login_attempts_lock:
+            routes._login_attempts["1.1.1.1"] = collections.deque([now - 100])
+            routes._login_attempts["2.2.2.2"] = collections.deque([now])
+            routes._purge_stale_buckets_locked(now, window=1)
+        assert "1.1.1.1" not in routes._login_attempts  # expired -> dropped
+        assert "2.2.2.2" in routes._login_attempts       # fresh -> kept
+    _clear_rate_limiter()
+
+
+def test_rate_limiter_caps_tracked_ip_count(tmp_path, monkeypatch):
+    _clear_rate_limiter()
+    client = _make_rate_limit_client(tmp_path, monkeypatch, max_attempts=3, window=300)
+
+    original_cap = routes._MAX_TRACKED_IPS
+    monkeypatch.setattr(routes, "_MAX_TRACKED_IPS", 5)
+    try:
+        with client.application.app_context():
+            for i in range(50):
+                routes.record_failed_login(f"10.0.0.{i}")
+            assert len(routes._login_attempts) <= 5
+    finally:
+        routes._MAX_TRACKED_IPS = original_cap
     _clear_rate_limiter()

@@ -3,6 +3,32 @@ import time
 import users_db
 
 
+def test_validate_user_rejects_unknown_user_and_wrong_password(temp_db):
+    assert users_db.validate_user("admin", "adminpass") is True
+    assert users_db.validate_user("admin", "wrong") is False
+    assert users_db.validate_user("ghost", "whatever") is False
+    assert users_db.validate_user("admin", None) is False
+    assert users_db.validate_user(None, None) is False
+
+
+def test_validate_user_runs_hash_check_even_for_unknown_user(temp_db, monkeypatch):
+    """Guards against user enumeration: a missing username must still trigger a
+    password hash comparison so its timing matches an existing user."""
+    calls = []
+    real_check = users_db.check_password_hash
+
+    def counting_check(stored_hash, password):
+        calls.append(stored_hash)
+        return real_check(stored_hash, password)
+
+    monkeypatch.setattr(users_db, "check_password_hash", counting_check)
+
+    users_db.validate_user("definitely-not-a-user", "irrelevant")
+
+    assert len(calls) == 1, "check_password_hash must run even when the user is absent"
+    assert calls[0] == users_db._DECOY_PASSWORD_HASH
+
+
 def test_user_crud_and_password_change(temp_db):
     assert users_db.validate_user("admin", "adminpass") is True
     assert users_db.change_password("admin", "new-admin-pass") is True
