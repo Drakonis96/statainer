@@ -1,6 +1,76 @@
+import os
 import time
 
 import users_db
+
+
+def test_get_db_path_defaults_to_data_dir(monkeypatch):
+    monkeypatch.delenv("USERS_DB_PATH", raising=False)
+    monkeypatch.delenv("DATA_DIR", raising=False)
+    assert users_db.get_db_path() == os.path.join(users_db.DEFAULT_DATA_DIR, "users.db")
+
+
+def test_data_dir_env_controls_db_location(tmp_path, monkeypatch):
+    monkeypatch.delenv("USERS_DB_PATH", raising=False)
+    data_dir = tmp_path / "mydata"
+    monkeypatch.setenv("DATA_DIR", str(data_dir))
+
+    assert users_db.get_db_path() == str(data_dir / "users.db")
+
+    users_db.migrate_add_columns_and_role_and_settings()
+    users_db.init_db("admin", "adminpass")
+    assert (data_dir / "users.db").exists()
+    assert users_db.validate_user("admin", "adminpass") is True
+
+
+def test_users_db_path_takes_precedence_over_data_dir(tmp_path, monkeypatch):
+    explicit = tmp_path / "explicit.db"
+    monkeypatch.setenv("USERS_DB_PATH", str(explicit))
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "ignored"))
+
+    assert users_db.get_db_path() == str(explicit)
+
+
+def test_migrate_legacy_db_location_moves_existing_db(tmp_path, monkeypatch):
+    legacy = tmp_path / "users.db"
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(users_db, "LEGACY_DB_PATH", str(legacy))
+
+    # Create a legacy database (old location) with a user account.
+    monkeypatch.setenv("USERS_DB_PATH", str(legacy))
+    users_db.migrate_add_columns_and_role_and_settings()
+    users_db.init_db("legacyuser", "legacypass")
+    assert legacy.exists()
+
+    # Switch to the new directory-based configuration and run the migration.
+    monkeypatch.delenv("USERS_DB_PATH", raising=False)
+    monkeypatch.setenv("DATA_DIR", str(data_dir))
+    users_db.migrate_legacy_db_location()
+
+    target = data_dir / "users.db"
+    assert target.exists()
+    assert not legacy.exists()
+    assert users_db.get_db_path() == str(target)
+    assert users_db.validate_user("legacyuser", "legacypass") is True
+
+
+def test_migrate_legacy_db_location_noop_when_target_exists(tmp_path, monkeypatch):
+    legacy = tmp_path / "users.db"
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    target = data_dir / "users.db"
+    monkeypatch.setattr(users_db, "LEGACY_DB_PATH", str(legacy))
+    monkeypatch.delenv("USERS_DB_PATH", raising=False)
+    monkeypatch.setenv("DATA_DIR", str(data_dir))
+
+    # Both a legacy file and a current database exist: the current one must win.
+    legacy.write_text("legacy-do-not-use")
+    target.write_text("current-db")
+
+    users_db.migrate_legacy_db_location()
+
+    assert target.read_text() == "current-db"
+    assert legacy.exists()  # untouched
 
 
 def test_validate_user_rejects_unknown_user_and_wrong_password(temp_db):

@@ -20,6 +20,11 @@ COPY VERSION ./
 COPY templates/ ./templates/
 COPY static/ ./static/
 
+# Crea el directorio de datos donde se creará/persistirá la base de datos SQLite.
+# Monta un volumen en /app/data para conservar usuarios y ajustes entre updates.
+RUN mkdir -p /app/data
+ENV DATA_DIR=/app/data
+
 # Expón el puerto en el que corre la aplicación (buenas prácticas)
 EXPOSE 5000
 

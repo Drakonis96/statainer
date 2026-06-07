@@ -161,6 +161,12 @@ It also mounts:
 - Docker socket as read-only
 - Local app data into `./data`
 
+The users/settings SQLite database lives inside the data directory (`/app/data` in the
+container, configurable with `DATA_DIR`). Keep the `./data` volume mounted to persist
+users and settings across updates. When upgrading from an older version that stored the
+database at `/app/users.db`, it is moved into the data directory automatically on first
+start, so existing accounts are preserved.
+
 ## Configuration
 
 ### Core Environment Variables
@@ -176,7 +182,8 @@ It also mounts:
 | `APP_ENV` | Runtime mode. Use `production` behind a reverse proxy | `development` |
 | `REQUIRE_EXPLICIT_SECRET_KEY` | Refuses startup with an ephemeral secret | `true` in production |
 | `LOGIN_MODE` | Login flow: `popup` or `page` | `popup` |
-| `APP_VERSION` | Version shown in the UI footer | repository `VERSION` file (`v0.9.19`) |
+| `APP_VERSION` | Version shown in the UI footer | repository `VERSION` file (`v0.9.20`) |
+| `DATA_DIR` | Directory where the users/settings database is created and persisted (point it at a folder, not a file) | `/app/data` |
 | `DOCKER_SOCKET_URL` | Docker socket URL | `unix:///var/run/docker.sock` |
 | `CADVISOR_URL` | cAdvisor endpoint | `http://cadvisor:8080` |
 | `GPU_METRICS_ENABLED` | Enables GPU collection | `true` in bundled compose |

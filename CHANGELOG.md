@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.9.20
+
+### Changed
+- **The database now lives in a dedicated data directory.** Point configuration at a *directory* (`DATA_DIR`, default `/app/data`) instead of a database file — statainer manages the `users.db` filename internally and creates it there on first start. The image pre-creates `/app/data` and sets `DATA_DIR=/app/data`; the bundled compose already mounts `./data:/app/data`.
+- `USERS_DB_PATH` is still honored (file *or* directory) for backward compatibility and takes precedence over `DATA_DIR`.
+
+### Migration
+- On startup, an existing database at the old `/app/users.db` location is **moved into the data directory automatically**, so upgrading users keep their accounts and settings. The move is best-effort and idempotent and never blocks startup.
+
+### Security
+- **Removed the committed `users.db` (and a stray `templates/users.db`) from the repository.** They contained a real admin password hash and were tracked in a public repo. They are now untracked and ignored; the database is only ever created at runtime inside the data directory. (Docker images were never affected — `.dockerignore` already excluded these files.)
+
+### Notes
+- No breaking changes. Existing deployments using the bundled compose (`./data:/app/data`) require no action; their database is already in the data directory.
+
 ## v0.9.19
 
 ### Security

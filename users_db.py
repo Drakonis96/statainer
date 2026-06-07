@@ -1,13 +1,20 @@
 import json
 import logging
 import os
+import shutil
 import sqlite3
 import time
 from werkzeug.security import check_password_hash, generate_password_hash
 
 APP_DIR = os.path.dirname(__file__)
-DEFAULT_DB_PATH = os.path.join(APP_DIR, 'data', 'users.db')
-LEGACY_DB_PATH = os.path.join(APP_DIR, 'users.db')
+DB_FILENAME = 'users.db'
+# Directory that holds the SQLite database. Configurable via the DATA_DIR env var
+# (point it at a directory — the database file name is managed internally).
+DEFAULT_DATA_DIR = os.path.join(APP_DIR, 'data')
+DEFAULT_DB_PATH = os.path.join(DEFAULT_DATA_DIR, DB_FILENAME)
+# Old in-repo / pre-data-dir location, kept only so existing installs can be
+# migrated transparently into the data directory on first start.
+LEGACY_DB_PATH = os.path.join(APP_DIR, DB_FILENAME)
 UPDATE_HISTORY_RETENTION_DAYS = 15
 UPDATE_HISTORY_RETENTION_SECONDS = UPDATE_HISTORY_RETENTION_DAYS * 24 * 60 * 60
 AUTO_UPDATE_SETTINGS_KEY = 'auto_update_settings'
@@ -20,20 +27,50 @@ _DECOY_PASSWORD_HASH = generate_password_hash('statainer-decoy-password-do-not-u
 
 
 def _normalize_db_path(path):
-    if os.path.isdir(path):
-        resolved_path = os.path.join(path, 'users.db')
-        logging.warning("Database path %s is a directory; using %s instead.", path, resolved_path)
-        return resolved_path
+    """If a configured path points at a directory, store the DB file inside it."""
+    if os.path.isdir(path) or path.endswith(('/', os.sep)):
+        return os.path.join(path, DB_FILENAME)
     return path
 
 
+def get_data_dir():
+    """Directory where the database lives. Configurable via DATA_DIR (a folder)."""
+    configured_dir = os.environ.get('DATA_DIR', '').strip()
+    if configured_dir:
+        return configured_dir
+    return DEFAULT_DATA_DIR
+
+
 def get_db_path():
+    # Backward compatibility: an explicit USERS_DB_PATH (file or directory) wins.
     configured_path = os.environ.get('USERS_DB_PATH', '').strip()
     if configured_path:
         return _normalize_db_path(configured_path)
-    if os.path.isfile(LEGACY_DB_PATH) or os.path.isdir(LEGACY_DB_PATH):
-        return _normalize_db_path(LEGACY_DB_PATH)
-    return DEFAULT_DB_PATH
+    # Otherwise the database always lives inside the configured data directory.
+    return os.path.join(get_data_dir(), DB_FILENAME)
+
+
+def migrate_legacy_db_location():
+    """Move a pre-existing database from the old <app>/users.db location into the
+    configured data directory so upgrading users keep their accounts.
+
+    Best-effort and idempotent: it only acts when there is a legacy file and no
+    database at the new location, and never raises (a failure must not block
+    startup — the app would simply bootstrap a fresh database instead).
+    """
+    try:
+        target = get_db_path()
+        if os.path.abspath(target) == os.path.abspath(LEGACY_DB_PATH):
+            return  # The target already IS the legacy location; nothing to move.
+        if os.path.exists(target):
+            return  # Already migrated, or a database already exists at the new path.
+        if not os.path.isfile(LEGACY_DB_PATH):
+            return  # No legacy database to migrate.
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        shutil.move(LEGACY_DB_PATH, target)
+        logging.warning("Migrated existing database from %s to %s", LEGACY_DB_PATH, target)
+    except Exception as exc:  # pragma: no cover - defensive, must not block startup
+        logging.warning("Could not migrate legacy database location: %s", exc)
 
 
 def get_db():
@@ -137,7 +174,8 @@ def migrate_add_columns_and_role_and_settings():
     conn.commit()
     conn.close()
 
-# Call migration at import
+# Relocate any legacy database into the data directory, then run schema migration.
+migrate_legacy_db_location()
 migrate_add_columns_and_role_and_settings()
 
 def init_db(default_user, default_password):

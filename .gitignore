@@ -7,7 +7,10 @@ __pycache__/
 *.py[cod]
 *.sqlite3
 *.db
-data/
+# Keep the data/ directory in the repo (so it always exists) but never track its
+# contents — the SQLite database is created there at runtime.
+data/*
+!data/.gitkeep
 .coverage
 coverage.xml
 htmlcov/
